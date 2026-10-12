@@ -207,7 +207,9 @@ iframe{display:block;width:100%;border:0;background:transparent}
           <button type="button" class="act" id="r_new">Nuevo trabajo</button>
         </div>
         <textarea id="r_ta" class="nop" readonly aria-label="Informe en texto"></textarea>
-        <div class="fs nop" style="margin-top:14px"><h3>Informes guardados en este dispositivo</h3><div id="savedList"></div><p class="note" id="savemsg"></p></div>
+        <div class="fs nop" style="margin-top:14px"><h3>Informes guardados en este dispositivo</h3><div id="savedList"></div><div class="btnrow" style="margin-top:10px"><button type="button" class="act" id="imp_btn">Importar archivo</button></div>
+        <input type="file" id="imp_file" accept=".json,application/json" hidden>
+        <p class="note" id="savemsg"></p></div>
         <p class="note nop">Para guardar en PDF usa Imprimir y elige "Guardar como PDF"; ahí salen el logo y los gráficos. Compartir y Copiar envían solo texto. Los datos de la empresa y el logo se guardan en este navegador. Nuevo trabajo borra el trabajo en pantalla (no los informes guardados) y pasa al siguiente número. Guarda el informe antes de empezar otro y genera el PDF antes de borrar.</p>
       </div>
     </div>
@@ -523,7 +525,7 @@ function listSaved(){
     all.sort(function(a,b){return a.fecha<b.fecha?1:-1;});
     if(!all.length){box.innerHTML='<div class="kv">Aún no hay informes guardados en este dispositivo.</div>';return;}
     box.innerHTML=all.map(function(r){
-      return '<div class="kv" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border)"><span><b>'+esc(r.numero)+'</b> · '+esc(r.cliente||"sin nombre de cliente")+'<br><small>'+esc(r.tipo)+' · '+esc(new Date(r.fecha).toLocaleString("es"))+'</small></span><span style="white-space:nowrap"><button type="button" class="act" data-open="'+esc(r.id)+'">Abrir</button> <button type="button" class="act" data-del="'+esc(r.id)+'">Borrar</button></span></div>';
+      return '<div class="kv" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border)"><span><b>'+esc(r.numero)+'</b> · '+esc(r.cliente||"sin nombre de cliente")+'<br><small>'+esc(r.tipo)+' · '+esc(new Date(r.fecha).toLocaleString("es"))+'</small></span><span style="display:flex;flex-direction:column;gap:6px"><button type="button" class="act" data-open="'+esc(r.id)+'">Abrir</button> <button type="button" class="act" data-exp="'+esc(r.id)+'">Exportar</button> <button type="button" class="act" data-del="'+esc(r.id)+'">Borrar</button></span></div>';
     }).join("");
   }).catch(function(){$("savedList").innerHTML='<div class="kv">No se pudo leer la lista de informes.</div>';});
 }
@@ -539,6 +541,37 @@ function openSaved(id){
     location.reload();
   }).catch(function(){msgSave("No se pudo abrir el informe.");});
 }
+function exportSaved(id){
+  idbDo("readonly",function(s){return s.get(id);}).then(function(rec){
+    if(!rec){msgSave("No se encontró el informe.");return;}
+    var data=JSON.stringify({formato:"unif-informe",version:1,rec:rec});
+    var blob=new Blob([data],{type:"application/json"});
+    var a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download=(rec.numero||"informe")+"_"+String(rec.cliente||"sin_cliente").replace(/[^A-Za-z0-9]+/g,"_")+".json";
+    document.body.appendChild(a);a.click();
+    setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);
+    msgSave("Informe exportado: "+a.download+". Revisa la carpeta de Descargas.");
+  }).catch(function(){msgSave("No se pudo exportar.");});
+}
+function saveImported(rec){
+  return idbDo("readwrite",function(s){return s.put(rec);}).then(function(){msgSave("Informe importado: "+rec.numero+".");listSaved();}).catch(function(){msgSave("No se pudo importar.");});
+}
+function importFile(file){
+  var rd=new FileReader();
+  rd.onload=function(){
+    var d=null;try{d=JSON.parse(rd.result);}catch(e){}
+    var rec=d&&d.rec;
+    if(!d||d.formato!=="unif-informe"||!rec||!rec.id||!rec.ls){msgSave("El archivo no corresponde a un informe de esta app.");return;}
+    idbDo("readonly",function(s){return s.get(rec.id);}).then(function(exist){
+      if(exist&&!window.confirm("Ya existe un informe con ese identificador en este dispositivo. ¿Reemplazarlo? Si cancelas, se guarda como copia nueva.")){
+        rec.id=Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+      }
+      return saveImported(rec);
+    }).catch(function(){msgSave("No se pudo importar.");});
+  };
+  rd.readAsText(file);
+}
 function delSaved(id){
   if(!window.confirm("¿Borrar este informe guardado? No se puede deshacer."))return;
   idbDo("readwrite",function(s){return s.delete(id);}).then(function(){
@@ -547,9 +580,12 @@ function delSaved(id){
   }).catch(function(){msgSave("No se pudo borrar.");});
 }
 $("r_save").addEventListener("click",saveReport);
+$("imp_btn").addEventListener("click",function(){$("imp_file").click();});
+$("imp_file").addEventListener("change",function(e){var f=e.target.files&&e.target.files[0];if(f)importFile(f);e.target.value="";});
 $("savedList").addEventListener("click",function(e){
   var b=e.target.closest("button");if(!b)return;
   if(b.dataset.open)openSaved(b.dataset.open);
+  else if(b.dataset.exp)exportSaved(b.dataset.exp);
   else if(b.dataset.del)delSaved(b.dataset.del);
 });
 /* al abrir un informe guardado: recarga y restaura fotos cuando las pruebas estén listas */
