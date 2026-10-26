@@ -1,10 +1,15 @@
-const CACHE_NAME = "transformadores-pwa-v3";
+/* Pruebas de Transformadores — service worker v4.0.0
+   Estrategia: primero la red (para recibir versiones nuevas) y, sin internet,
+   la copia guardada. Solo se guardan respuestas del mismo origen. */
+const CACHE_NAME = "transformadores-pwa-v4.0.0";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./manifest.json",
   "./icon-192.png",
-  "./icon-512.png"
+  "./icon-512.png",
+  "./icon-maskable-192.png",
+  "./icon-maskable-512.png"
 ];
 
 self.addEventListener("install", event => {
@@ -23,16 +28,44 @@ self.addEventListener("activate", event => {
   );
 });
 
-// Primero la red (así llegan las versiones nuevas) y, sin internet, la copia guardada.
+self.addEventListener("message", event => {
+  if (event.data === "SKIP_WAITING") self.skipWaiting();
+});
+
 self.addEventListener("fetch", event => {
-  if (event.request.method !== "GET") return;
+  const req = event.request;
+  if (req.method !== "GET") return;
+
+  let url;
+  try { url = new URL(req.url); } catch (e) { return; }
+  if (url.origin !== self.location.origin) return; // no tocar otros dominios
+
+  // Navegación: red primero; sin internet, el index guardado.
+  if (req.mode === "navigate") {
+    event.respondWith(
+      fetch(req)
+        .then(res => {
+          if (res && res.status === 200) {
+            const copy = res.clone();
+            caches.open(CACHE_NAME).then(c => c.put("./index.html", copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match("./index.html"))
+    );
+    return;
+  }
+
+  // Recursos del mismo origen: red primero y caché de respaldo.
   event.respondWith(
-    fetch(event.request).then(response => {
-      if (response && response.status === 200 && new URL(event.request.url).origin === self.location.origin) {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
-      }
-      return response;
-    }).catch(() => caches.match(event.request).then(cached => cached || caches.match("./index.html")))
+    fetch(req)
+      .then(res => {
+        if (res && res.status === 200) {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then(c => c.put(req, copy));
+        }
+        return res;
+      })
+      .catch(() => caches.match(req))
   );
 });
