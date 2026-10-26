@@ -53,7 +53,7 @@ CHANGELOG.md
 El sitio se publica con **GitHub Pages** desde la rama `main` (raíz del repositorio).
 
 1. Cambia `APP_VERSION` en `index.html` y el texto visible `#ver` / `#repver`.
-2. Sube `CACHE_NAME` en `service-worker.js` con la misma versión (por ejemplo `transformadores-pwa-v4.0.1`).
+2. Sube `CACHE_NAME` en `service-worker.js` con la misma versión y fecha (por ejemplo `transformadores-pwa-v4.0.1-2026-11-02`).
 3. Actualiza `CHANGELOG.md`.
 4. Haz commit y push a `main`. GitHub Pages publica en 1–2 minutos.
 5. Abre la URL, recarga y verifica que el pie muestre la versión nueva.
